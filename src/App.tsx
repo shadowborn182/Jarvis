@@ -4,16 +4,18 @@ import {
   Clock,
   Code2,
   Database,
+  FileText,
   Layers,
   Shield,
   Terminal,
 } from 'lucide-react';
 import {HelpSimulator} from './components/HelpSimulator';
+import {ReadmeViewer} from './components/ReadmeViewer';
 import {SchemaExplorer} from './components/SchemaExplorer';
 import {SourceExplorer} from './components/SourceExplorer';
 import {MODULE_SPECS, ROADMAP_PHASES} from './data/jarvisArchitecture';
 
-type NavTab = 'overview' | 'source' | 'database' | 'help';
+type NavTab = 'overview' | 'readme' | 'source' | 'database' | 'help';
 
 export default function App() {
   const [activeTab, setActiveTab] = useState<NavTab>('overview');
@@ -27,6 +29,7 @@ export default function App() {
 
   const navItems: {id: NavTab; label: string; icon: typeof Layers}[] = [
     {id: 'overview', label: 'Architecture & Roadmap', icon: Layers},
+    {id: 'readme', label: 'README & Guide', icon: FileText},
     {id: 'source', label: 'Python Source Explorer', icon: Code2},
     {id: 'database', label: 'Database Schema', icon: Database},
     {id: 'help', label: 'Help Menu & Setup', icon: Terminal},
@@ -237,6 +240,7 @@ export default function App() {
             </div>
           )}
 
+          {activeTab === 'readme' && <ReadmeViewer />}
           {activeTab === 'source' && <SourceExplorer />}
           {activeTab === 'database' && <SchemaExplorer />}
           {activeTab === 'help' && <HelpSimulator />}
