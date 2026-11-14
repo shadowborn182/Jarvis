@@ -131,7 +131,7 @@ export default function App() {
                 <div className="rounded-xl border border-slate-800 bg-[#0F172A] p-4">
                   <p className="text-xs text-slate-400">ORM Data Models</p>
                   <p className="mt-1 font-mono text-xl font-semibold text-white tabular-nums">
-                    23 Tables
+                    25 Tables
                   </p>
                 </div>
                 <div className="rounded-xl border border-slate-800 bg-[#0F172A] p-4">

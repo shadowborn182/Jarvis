@@ -20,7 +20,7 @@ export function SchemaExplorer() {
             SQLAlchemy Async ORM &amp; Alembic Schema
           </h2>
           <p className="mt-1 text-sm text-slate-400">
-            23 normalized tables defined in <span className="font-mono text-slate-200">JARVIS/database/models.py</span> supporting SQLite (WAL mode) locally and PostgreSQL 16 in production.
+            25 normalized tables defined in <span className="font-mono text-slate-200">JARVIS/database/models.py</span> supporting SQLite (WAL mode) locally and PostgreSQL 16 in production.
           </p>
         </div>
 
@@ -37,7 +37,7 @@ export function SchemaExplorer() {
       </div>
 
       <div className="rounded-xl border border-slate-800 bg-[#0F172A] p-4">
-        <p className="mb-2 text-xs font-medium text-slate-400">All 23 Registered ORM Models</p>
+        <p className="mb-2 text-xs font-medium text-slate-400">All 25 Registered ORM Models</p>
         <p className="font-mono text-xs leading-6 text-slate-300">
           {ALL_23_MODEL_NAMES.join(' · ')}
         </p>

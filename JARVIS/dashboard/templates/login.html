@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="card auth-card">
+  <h1>{{ bot_name }} Control Panel</h1>
+  <p class="muted">{{ bot_description }}. Sign in with Discord to manage server prefixes, Premium No-Prefix mode, embed branding, and welcome/goodbye banners.</p>
+
+  {% if oauth_configured %}
+    <a href="/auth/login" class="btn btn-primary">Login with Discord</a>
+  {% else %}
+    <div class="alert alert-warn">
+      Configure <code>DISCORD_CLIENT_ID</code>, <code>DISCORD_CLIENT_SECRET</code>, and <code>DISCORD_REDIRECT_URI</code> in <code>.env</code> to enable Discord OAuth2 login.
+    </div>
+  {% endif %}
+</section>
+{% endblock %}

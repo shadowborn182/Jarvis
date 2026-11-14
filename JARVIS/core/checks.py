@@ -26,6 +26,10 @@ class ModRoleRequired(commands.CheckFailure):
     """Raised when a user lacks moderator permissions or configured mod roles."""
 
 
+class PremiumRequired(commands.CheckFailure):
+    """Raised when a command or feature requires an active server Premium subscription."""
+
+
 def is_jarvis_owner() -> Callable[[T], T]:
     """Check whether the invoking user is configured in BOT_OWNER_IDS."""
 
@@ -47,6 +51,26 @@ def is_guild_owner_only() -> Callable[[T], T]:
         if ctx.author.id == ctx.guild.owner_id:
             return True
         raise GuildOwnerOnly("Only the server owner can execute this command.")
+
+    return commands.check(predicate)
+
+
+def is_guild_premium() -> Callable[[T], T]:
+    """Check whether the current Discord server has an active JARVIS Premium subscription."""
+
+    async def predicate(ctx: commands.Context) -> bool:
+        if ctx.guild is None:
+            raise commands.NoPrivateMessage()
+        premium_svc = getattr(ctx.bot, "premium", None)
+        if premium_svc is None:
+            raise PremiumRequired("Premium service is currently unavailable.")
+        status = await premium_svc.get_guild_status(ctx.guild.id)
+        if not status.is_premium:
+            raise PremiumRequired(
+                "This feature requires **JARVIS Premium** for this server. "
+                "Run `premium info` to inspect Premium plans or ask the bot owner (**Shadow**) to activate."
+            )
+        return True
 
     return commands.check(predicate)
 

@@ -1,0 +1,174 @@
+{% extends "base.html" %}
+{% block content %}
+<div class="page-header">
+  <div>
+    <a href="/servers" class="back-link">&larr; All Servers</a>
+    <h1>{{ guild.name }}</h1>
+    <p class="muted">
+      Server ID: <code>{{ guild_id }}</code> ·
+      Plan: <strong class="{{ 'status-premium' if premium.is_premium else 'status-free' }}">{{ premium.plan_name }}</strong>
+      {% if premium.is_premium %}
+        · Expires: {{ premium.expires_at.strftime('%Y-%m-%d %H:%M UTC') if premium.expires_at else 'Lifetime' }}
+      {% endif %}
+    </p>
+  </div>
+</div>
+
+{% if saved %}
+  <div class="alert alert-success">{{ saved }}</div>
+{% endif %}
+{% if error %}
+  <div class="alert alert-error">{{ error }}</div>
+{% endif %}
+
+<form action="/guild/{{ guild_id }}/settings" method="post" class="card form-grid">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+
+  <h2>General &amp; No-Prefix Settings</h2>
+  <div class="field-row">
+    <label>
+      <span>Server Prefix</span>
+      <input type="text" name="prefix" value="{{ prefix }}" maxlength="10" required />
+    </label>
+
+    <label class="checkbox-label">
+      <input type="checkbox" name="no_prefix_enabled" value="1" {% if branding.no_prefix_enabled and premium.is_premium %}checked{% endif %} {% if not premium.is_premium %}disabled{% endif %} />
+      <span>Enable No-Prefix Commands {% if not premium.is_premium %}(Premium Required){% endif %}</span>
+    </label>
+  </div>
+
+  <h2>Custom Embed Branding (Premium)</h2>
+  <div class="field-row">
+    <label>
+      <span>Embed Color</span>
+      <input type="color" name="embed_color" value="{{ branding.embed_color }}" {% if not premium.is_premium %}disabled{% endif %} />
+    </label>
+
+    <label>
+      <span>Title Style</span>
+      <select name="embed_title_style" {% if not premium.is_premium %}disabled{% endif %}>
+        {% for style in title_styles %}
+          <option value="{{ style }}" {% if branding.embed_title_style == style %}selected{% endif %}>{{ style }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+
+  <div class="field-row">
+    <label>
+      <span>Custom Embed Footer</span>
+      <input type="text" name="embed_footer" value="{{ branding.embed_footer or '' }}" maxlength="250" placeholder="JARVIS • Developed by Shadow" {% if not premium.is_premium %}disabled{% endif %} />
+    </label>
+    <label>
+      <span>Footer Icon URL (HTTPS)</span>
+      <input type="url" name="footer_icon_url" value="{{ branding.footer_icon_url or '' }}" placeholder="https://..." {% if not premium.is_premium %}disabled{% endif %} />
+    </label>
+  </div>
+
+  <div class="field-row">
+    <label>
+      <span>Server Logo URL (HTTPS)</span>
+      <input type="url" name="server_logo_url" value="{{ branding.server_logo_url or '' }}" placeholder="https://..." {% if not premium.is_premium %}disabled{% endif %} />
+    </label>
+    <label>
+      <span>Branding Header Text</span>
+      <input type="text" name="branding_text" value="{{ branding.branding_text or '' }}" maxlength="250" {% if not premium.is_premium %}disabled{% endif %} />
+    </label>
+  </div>
+
+  <h2>Welcome Message &amp; Banner</h2>
+  <label>
+    <span>Welcome Message (variables: {user}, {mention}, {server}, {member_count})</span>
+    <textarea name="welcome_message" rows="2">{{ welcome.welcome_message or '' }}</textarea>
+  </label>
+
+  <div class="field-row">
+    <label class="checkbox-label">
+      <input type="checkbox" name="welcome_banner_enabled" value="1" {% if branding.welcome_banner_enabled %}checked{% endif %} {% if not premium.is_premium %}disabled{% endif %} />
+      <span>Enable Welcome Banner</span>
+    </label>
+    <label>
+      <span>Welcome Banner Text Color</span>
+      <input type="color" name="welcome_banner_text_color" value="{{ branding.welcome_banner_text_color }}" {% if not premium.is_premium %}disabled{% endif %} />
+    </label>
+    <label>
+      <span>Text Position</span>
+      <select name="welcome_banner_text_position" {% if not premium.is_premium %}disabled{% endif %}>
+        {% for pos in text_positions %}
+          <option value="{{ pos }}" {% if branding.welcome_banner_text_position == pos %}selected{% endif %}>{{ pos }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+
+  <div class="field-row">
+    <label>
+      <span>Welcome Banner Background URL (HTTPS)</span>
+      <input type="url" name="welcome_banner_bg_url" value="{{ branding.welcome_banner_bg_url or '' }}" {% if not premium.is_premium %}disabled{% endif %} />
+    </label>
+    <label>
+      <span>Welcome Banner Subtitle</span>
+      <input type="text" name="welcome_banner_text" value="{{ branding.welcome_banner_text or '' }}" maxlength="250" {% if not premium.is_premium %}disabled{% endif %} />
+    </label>
+  </div>
+
+  <h2>Goodbye Message &amp; Banner</h2>
+  <label>
+    <span>Goodbye Message</span>
+    <textarea name="goodbye_message" rows="2">{{ welcome.goodbye_message or '' }}</textarea>
+  </label>
+
+  <div class="field-row">
+    <label class="checkbox-label">
+      <input type="checkbox" name="goodbye_banner_enabled" value="1" {% if branding.goodbye_banner_enabled %}checked{% endif %} {% if not premium.is_premium %}disabled{% endif %} />
+      <span>Enable Goodbye Banner</span>
+    </label>
+    <label>
+      <span>Goodbye Banner Text Color</span>
+      <input type="color" name="goodbye_banner_text_color" value="{{ branding.goodbye_banner_text_color }}" {% if not premium.is_premium %}disabled{% endif %} />
+    </label>
+    <label>
+      <span>Text Position</span>
+      <select name="goodbye_banner_text_position" {% if not premium.is_premium %}disabled{% endif %}>
+        {% for pos in text_positions %}
+          <option value="{{ pos }}" {% if branding.goodbye_banner_text_position == pos %}selected{% endif %}>{{ pos }}</option>
+        {% endfor %}
+      </select>
+    </label>
+  </div>
+
+  <div class="field-row">
+    <label>
+      <span>Goodbye Banner Background URL (HTTPS)</span>
+      <input type="url" name="goodbye_banner_bg_url" value="{{ branding.goodbye_banner_bg_url or '' }}" {% if not premium.is_premium %}disabled{% endif %} />
+    </label>
+    <label>
+      <span>Goodbye Banner Subtitle</span>
+      <input type="text" name="goodbye_banner_text" value="{{ branding.goodbye_banner_text or '' }}" maxlength="250" {% if not premium.is_premium %}disabled{% endif %} />
+    </label>
+  </div>
+
+  <div class="form-actions">
+    <button type="submit" class="btn btn-primary">Save Settings</button>
+  </div>
+</form>
+
+<section class="card preview-section">
+  <h2>Live Banner Previews</h2>
+  <div class="preview-grid">
+    <div>
+      <p class="small muted">Welcome Banner</p>
+      <img src="/api/guild/{{ guild_id }}/banner-preview?kind=welcome" alt="Welcome Banner Preview" class="banner-preview" />
+    </div>
+    <div>
+      <p class="small muted">Goodbye Banner</p>
+      <img src="/api/guild/{{ guild_id }}/banner-preview?kind=goodbye" alt="Goodbye Banner Preview" class="banner-preview" />
+    </div>
+  </div>
+
+  <form action="/guild/{{ guild_id }}/reset" method="post" class="reset-form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token }}" />
+    <button type="submit" class="btn btn-danger">Reset Branding to Defaults</button>
+  </form>
+</section>
+{% endblock %}

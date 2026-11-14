@@ -1,0 +1,30 @@
+{% extends "base.html" %}
+{% block content %}
+<section class="page-header">
+  <h1>Select a Discord Server</h1>
+  <p class="muted">Only servers where you hold Administrator or Manage Server permissions are listed.</p>
+</section>
+
+{% if not guilds %}
+  <div class="card">
+    <p class="muted">No manageable Discord servers were found on your account.</p>
+  </div>
+{% else %}
+  <div class="grid">
+    {% for g in guilds %}
+      <div class="card server-card">
+        <div class="server-head">
+          <h3>{{ g.name }}</h3>
+          <span class="status-text {{ 'status-premium' if g.is_premium else 'status-free' }}">
+            {{ g.plan_name }}
+          </span>
+        </div>
+        <p class="muted small">ID: <code>{{ g.id }}</code> · Expires: {{ g.expires_at }}</p>
+        <div class="card-actions">
+          <a href="/guild/{{ g.id }}" class="btn btn-primary">Manage Server</a>
+        </div>
+      </div>
+    {% endfor %}
+  </div>
+{% endif %}
+{% endblock %}

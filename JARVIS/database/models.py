@@ -60,6 +60,63 @@ class GuildSettings(Base):
     tracker_settings: Mapped[TrackerSettings | None] = relationship(
         back_populates="guild", uselist=False, cascade="all, delete-orphan"
     )
+    branding_settings: Mapped[GuildBranding | None] = relationship(
+        back_populates="guild", uselist=False, cascade="all, delete-orphan"
+    )
+
+
+class GuildBranding(Base):
+    """Per-guild Premium customization: No Prefix, custom embed branding, and welcome/goodbye banners."""
+
+    __tablename__ = "guild_branding"
+
+    guild_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey("guild_settings.guild_id", ondelete="CASCADE"), primary_key=True
+    )
+    no_prefix_enabled: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    embed_color: Mapped[str] = mapped_column(String(7), default="#38BDF8", nullable=False)
+    embed_title_style: Mapped[str] = mapped_column(String(24), default="default", nullable=False)
+    embed_footer: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    footer_icon_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    server_logo_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    branding_text: Mapped[str | None] = mapped_column(String(256), nullable=True)
+
+    # Welcome banner settings
+    welcome_banner_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    welcome_banner_bg_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    welcome_banner_text: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    welcome_banner_text_color: Mapped[str] = mapped_column(String(7), default="#F8FAFC", nullable=False)
+    welcome_banner_accent_color: Mapped[str] = mapped_column(String(7), default="#38BDF8", nullable=False)
+    welcome_banner_text_position: Mapped[str] = mapped_column(String(16), default="center", nullable=False)
+
+    # Goodbye banner settings
+    goodbye_banner_enabled: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    goodbye_banner_bg_url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    goodbye_banner_text: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    goodbye_banner_text_color: Mapped[str] = mapped_column(String(7), default="#F8FAFC", nullable=False)
+    goodbye_banner_accent_color: Mapped[str] = mapped_column(String(7), default="#F59E0B", nullable=False)
+    goodbye_banner_text_position: Mapped[str] = mapped_column(String(16), default="center", nullable=False)
+
+    updated_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False
+    )
+
+    guild: Mapped[GuildSettings] = relationship(back_populates="branding_settings")
+
+
+class PremiumAuditLog(Base):
+    """Immutable audit log of all Premium grants, revocations, extensions, and expirations."""
+
+    __tablename__ = "premium_audit_logs"
+    __table_args__ = (Index("ix_premium_audit_guild", "guild_id", "created_at"),)
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
+    guild_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    actor_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
+    action: Mapped[str] = mapped_column(String(32), nullable=False)  # grant, revoke, extend, expire, activate
+    plan_name: Mapped[str] = mapped_column(String(32), nullable=False)
+    details: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
 
 class UserSettings(Base):
@@ -356,7 +413,10 @@ class CustomRole(Base):
 
 class PremiumSubscription(Base):
     __tablename__ = "premium_subscriptions"
-    __table_args__ = (Index("ix_premium_active_expires", "active", "expires_at"),)
+    __table_args__ = (
+        Index("ix_premium_active_expires", "active", "expires_at"),
+        Index("ix_premium_guild_active", "guild_id", "active"),
+    )
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True, autoincrement=True)
     user_id: Mapped[int] = mapped_column(BigInteger, nullable=False)
@@ -365,8 +425,11 @@ class PremiumSubscription(Base):
     server_slots: Mapped[int] = mapped_column(Integer, default=1, nullable=False)
     payment_reference: Mapped[str | None] = mapped_column(String(128), nullable=True)
     active: Mapped[bool] = mapped_column(Boolean, default=True, nullable=False)
+    expiry_notified: Mapped[bool] = mapped_column(Boolean, default=False, nullable=False)
+    granted_by: Mapped[int | None] = mapped_column(BigInteger, nullable=True)
     starts_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
     expires_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
 
 
 class UserXP(Base):

@@ -1,13 +1,12 @@
 """
 JARVIS — Interactive 17-Category Help Menu & Command Search
-Dynamically introspects live loaded commands so zero fake commands are ever listed.
+Upgraded with Premium & No-Prefix command indicators, Back button, Pagination & Search.
 Developer: Shadow
 """
 
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Sequence
 
 import discord
 from discord import app_commands
@@ -19,8 +18,8 @@ from core.utilities import truncate_text
 
 CATEGORY_DESCRIPTIONS: dict[str, str] = {
     "Security": "Anti-nuke, anti-raid, anti-betray, quarantine, panic & night mode protection.",
-    "Utility": "Server/user info, reminders, polls, sticky messages, embed builder & custom commands.",
-    "General": "Interactive help, bot stats, XP leveling, profiles, badges & leaderboards.",
+    "Utility": "Server/user info, avatar lookup, reminders, polls, sticky messages & custom commands.",
+    "General": "Interactive help, bot stats, prefix config, XP leveling, profiles & badges.",
     "Moderation": "Ban, tempban, kick, warn, timeout, purge, channel locks & voice moderation.",
     "Autoroles": "Join/bot/human autoroles, button roles, dropdown roles & reaction panels.",
     "Fun": "Mini-games, 8ball, Tic-Tac-Toe, Connect Four, social actions & image tools.",
@@ -34,7 +33,7 @@ CATEGORY_DESCRIPTIONS: dict[str, str] = {
     "Customrole": "Personal user roles with safe hierarchy & permission boundaries.",
     "Template": "Server structure, role, embed & configuration JSON backup/restore templates.",
     "Marriage": "Proposals, marriage profiles, anniversaries & couple leaderboards.",
-    "Premium": "Subscription plans, server slots, expiry tracking & premium feature access.",
+    "Premium": "Server Premium subscriptions, No-Prefix mode, custom branding & banners.",
 }
 
 COMMANDS_PER_PAGE = 6
@@ -48,6 +47,22 @@ class CommandDoc:
     usage: str
     aliases: tuple[str, ...]
     permissions: str
+    is_premium: bool
+    no_prefix: bool
+
+
+def _iter_visible_commands(bot: commands.Bot) -> list[commands.Command]:
+    """Flatten top-level commands and group subcommands so all real commands are discoverable."""
+    collected: list[commands.Command] = []
+    for cmd in sorted(bot.commands, key=lambda c: c.qualified_name):
+        if cmd.hidden:
+            continue
+        collected.append(cmd)
+        if isinstance(cmd, commands.Group):
+            for sub in sorted(cmd.commands, key=lambda s: s.qualified_name):
+                if not sub.hidden:
+                    collected.append(sub)
+    return collected
 
 
 def collect_live_commands(bot: commands.Bot, prefix: str = "j!") -> dict[str, list[CommandDoc]]:
@@ -57,18 +72,18 @@ def collect_live_commands(bot: commands.Bot, prefix: str = "j!") -> dict[str, li
     """
     grouped: dict[str, list[CommandDoc]] = {cat: [] for cat in OFFICIAL_CATEGORIES}
 
-    for cmd in sorted(bot.commands, key=lambda c: c.qualified_name):
-        if cmd.hidden:
-            continue
-
+    for cmd in _iter_visible_commands(bot):
         category = getattr(cmd.cog, "category", "General") if cmd.cog else "General"
         if category not in grouped:
             category = "General"
 
-        # Extract human-readable permission requirement if attached via custom metadata or checks
         perm_label = getattr(cmd, "help_permissions", None) or getattr(
             cmd.callback, "__jarvis_perms__", "Everyone"
         )
+        is_premium = bool(getattr(cmd.callback, "__jarvis_premium__", False))
+        # All non-hidden top-level commands support No Prefix when enabled on a Premium server
+        no_prefix = bool(getattr(cmd.callback, "__jarvis_noprefix__", True))
+
         sig = f" {cmd.signature}" if cmd.signature else ""
         usage = f"{prefix}{cmd.qualified_name}{sig}"
         desc = cmd.short_doc or cmd.help or "No description provided."
@@ -81,6 +96,8 @@ def collect_live_commands(bot: commands.Bot, prefix: str = "j!") -> dict[str, li
                 usage=usage,
                 aliases=tuple(cmd.aliases),
                 permissions=perm_label,
+                is_premium=is_premium,
+                no_prefix=no_prefix,
             )
         )
 
@@ -98,7 +115,8 @@ def build_overview_embed(bot: commands.Bot, prefix: str) -> discord.Embed:
             f"Use the dropdown below to inspect any of the **17 modules**, "
             f"navigate pages with **Previous / Next**, or click **Search** to find a command.\n\n"
             f"**Active Prefix:** `{prefix}` · **Slash Commands:** `/help` · "
-            f"**Loaded Commands:** `{total_commands}`"
+            f"**Loaded Commands:** `{total_commands}`\n"
+            f"{JarvisEmojis.PREMIUM} = Premium Feature · {JarvisEmojis.NOPREFIX} = No-Prefix Ready (Premium)"
         ),
         color=JarvisColors.BRAND,
     )
@@ -107,16 +125,15 @@ def build_overview_embed(bot: commands.Bot, prefix: str) -> discord.Embed:
     for idx, cat in enumerate(OFFICIAL_CATEGORIES, start=1):
         emoji = JarvisEmojis.CATEGORY_MAP.get(cat, "•")
         count = len(grouped[cat])
-        status = f"`{count}` cmds" if count > 0 else "`Module Ready / Pending`"
+        status = f"`{count}` cmds" if count > 0 else "`Ready (Next Phase)`"
         lines.append(f"`{idx:02d}.` {emoji} **{cat}** — {status}")
 
-    # Split cleanly into two balanced columns
     mid = (len(lines) + 1) // 2
     embed.add_field(name="Modules (1–9)", value="\n".join(lines[:mid]), inline=True)
     embed.add_field(name="Modules (10–17)", value="\n".join(lines[mid:]), inline=True)
     embed.add_field(
         name="Developer & Support",
-        value=f"Developed by **{DEVELOPER_NAME}** · Prefix `{prefix}` or `/`",
+        value=f"Developed by **{DEVELOPER_NAME}** · Prefix `{prefix}`, `/`, or No-Prefix",
         inline=False,
     )
     return embed
@@ -158,10 +175,17 @@ def build_category_embed(
     chunk = cmds[start : start + COMMANDS_PER_PAGE]
     for doc in chunk:
         aliases_txt = ", ".join(f"`{a}`" for a in doc.aliases) if doc.aliases else "None"
+        badges: list[str] = []
+        if doc.is_premium:
+            badges.append(f"{JarvisEmojis.PREMIUM} Premium")
+        if doc.no_prefix:
+            badges.append(f"{JarvisEmojis.NOPREFIX} No-Prefix")
+        badge_line = " · ".join(badges) if badges else "Standard"
+
         value = (
             f"{doc.description}\n"
             f"**Usage:** `{doc.usage}`\n"
-            f"**Aliases:** {aliases_txt} · **Permissions:** `{doc.permissions}`"
+            f"**Aliases:** {aliases_txt} · **Perms:** `{doc.permissions}` · **Tags:** {badge_line}"
         )
         embed.add_field(name=f"`/{doc.name}` / `{prefix}{doc.name}`", value=truncate_text(value), inline=False)
 
@@ -171,7 +195,7 @@ def build_category_embed(
 class CommandSearchModal(discord.ui.Modal, title="Search JARVIS Commands"):
     query_input = discord.ui.TextInput(
         label="Command name or keyword",
-        placeholder="e.g. prefix, ping, botinfo, uptime",
+        placeholder="e.g. prefix, premium, brand, avatar, ping",
         min_length=1,
         max_length=50,
     )
@@ -209,9 +233,15 @@ class CommandSearchModal(discord.ui.Modal, title="Search JARVIS Commands"):
             color=JarvisColors.INFO,
         )
         for doc in matches[:8]:
+            flags = []
+            if doc.is_premium:
+                flags.append(f"{JarvisEmojis.PREMIUM} Premium")
+            if doc.no_prefix:
+                flags.append(f"{JarvisEmojis.NOPREFIX} No-Prefix")
+            flag_str = " · ".join(flags)
             embed.add_field(
                 name=f"{JarvisEmojis.CATEGORY_MAP.get(doc.category, '•')} {doc.name} ({doc.category})",
-                value=f"{doc.description}\n**Usage:** `{doc.usage}` · **Perms:** `{doc.permissions}`",
+                value=f"{doc.description}\n**Usage:** `{doc.usage}` · **Perms:** `{doc.permissions}`\n{flag_str}",
                 inline=False,
             )
         await interaction.response.send_message(embed=embed, ephemeral=True)
@@ -247,6 +277,7 @@ class CategorySelect(discord.ui.Select):
 
     async def callback(self, interaction: discord.Interaction) -> None:
         choice = self.values[0]
+        self.help_view.push_history()
         self.help_view.page = 0
         if choice == "__overview__":
             self.help_view.current_category = None
@@ -279,13 +310,20 @@ class JarvisHelpView(discord.ui.View):
         self.current_category: str | None = None
         self.page: int = 0
         self.total_pages: int = 1
+        self.history: list[tuple[str | None, int]] = []
         self.message: discord.Message | None = None
 
         self.add_item(CategorySelect(self))
         self.sync_button_states()
 
+    def push_history(self) -> None:
+        self.history.append((self.current_category, self.page))
+        if len(self.history) > 15:
+            self.history.pop(0)
+
     def sync_button_states(self) -> None:
         in_category = self.current_category is not None
+        self.back_button.disabled = len(self.history) == 0 and not in_category
         self.prev_button.disabled = (not in_category) or self.page <= 0
         self.next_button.disabled = (not in_category) or self.page >= (self.total_pages - 1)
         self.home_button.disabled = not in_category
@@ -310,6 +348,33 @@ class JarvisHelpView(discord.ui.View):
                 await self.message.edit(view=self)
             except discord.HTTPException:
                 pass
+
+    @discord.ui.button(
+        label="Back",
+        style=discord.ButtonStyle.secondary,
+        custom_id="jarvis:help:back",
+        row=1,
+    )
+    async def back_button(
+        self, interaction: discord.Interaction, _button: discord.ui.Button
+    ) -> None:
+        if self.history:
+            prev_cat, prev_page = self.history.pop()
+            self.current_category = prev_cat
+            self.page = prev_page
+        else:
+            self.current_category = None
+            self.page = 0
+
+        if self.current_category is None:
+            self.total_pages = 1
+            embed = build_overview_embed(self.bot, self.prefix)
+        else:
+            embed, self.total_pages = build_category_embed(
+                self.bot, self.current_category, self.prefix, page=self.page
+            )
+        self.sync_button_states()
+        await interaction.response.edit_message(embed=embed, view=self)
 
     @discord.ui.button(
         label="Previous",
@@ -338,6 +403,7 @@ class JarvisHelpView(discord.ui.View):
     async def home_button(
         self, interaction: discord.Interaction, _button: discord.ui.Button
     ) -> None:
+        self.push_history()
         self.current_category = None
         self.page = 0
         self.total_pages = 1
@@ -390,11 +456,11 @@ class HelpCog(commands.Cog):
     )
     @app_commands.describe(query="Optional command name or category to look up")
     async def help_command(self, ctx: commands.Context, *, query: str | None = None) -> None:
-        prefix = ctx.clean_prefix or getattr(self.bot.settings, "default_prefix", "j!")
+        default_prefix = getattr(self.bot.settings, "default_prefix", "j!")
+        prefix = ctx.clean_prefix or default_prefix
 
         if query:
             cleaned = query.strip()
-            # Match category directly (case-insensitive)
             matched_cat = next(
                 (cat for cat in OFFICIAL_CATEGORIES if cat.lower() == cleaned.lower()),
                 None,
@@ -408,13 +474,15 @@ class HelpCog(commands.Cog):
                 view.message = msg
                 return
 
-            # Match exact command
             cmd = self.bot.get_command(cleaned.lower())
             if cmd and not cmd.hidden:
                 cat = getattr(cmd.cog, "category", "General") if cmd.cog else "General"
                 sig = f" {cmd.signature}" if cmd.signature else ""
                 aliases = ", ".join(f"`{a}`" for a in cmd.aliases) if cmd.aliases else "None"
                 perms = getattr(cmd.callback, "__jarvis_perms__", "Everyone")
+                is_prem = bool(getattr(cmd.callback, "__jarvis_premium__", False))
+                no_pref = bool(getattr(cmd.callback, "__jarvis_noprefix__", True))
+
                 embed = jarvis_embed(
                     title=f"{JarvisEmojis.CATEGORY_MAP.get(cat, '•')} Command: {cmd.qualified_name}",
                     description=cmd.help or cmd.short_doc or "No description provided.",
@@ -423,6 +491,11 @@ class HelpCog(commands.Cog):
                 embed.add_field(name="Category", value=cat, inline=True)
                 embed.add_field(name="Permissions", value=f"`{perms}`", inline=True)
                 embed.add_field(name="Aliases", value=aliases, inline=True)
+                embed.add_field(
+                    name="Flags",
+                    value=f"Premium: `{'Yes' if is_prem else 'No'}` · No-Prefix: `{'Yes' if no_pref else 'No'}`",
+                    inline=False,
+                )
                 embed.add_field(
                     name="Usage",
                     value=f"`{prefix}{cmd.qualified_name}{sig}`\n`/{cmd.qualified_name}{sig}`",

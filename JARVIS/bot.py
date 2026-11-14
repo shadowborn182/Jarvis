@@ -25,24 +25,37 @@ from config import (
     get_settings,
     validate_bot_startup_env,
 )
+from core.branding import JarvisColors, jarvis_embed
 from core.cache import AsyncTTLCache
 from core.database import DatabaseManager
 from core.errors import handle_app_command_error, handle_prefix_command_error
 from core.loader import load_all_extensions
 from core.logger import setup_logging
+from core.noprefix import NoPrefixService
+from core.premium import PremiumService
 
 
 async def resolve_prefix(bot: JarvisBot, message: discord.Message) -> list[str]:
-    """Dynamic per-guild prefix resolver backed by AsyncTTLCache + DatabaseManager."""
+    """
+    Dynamic per-guild prefix resolver:
+    1. Supports standard mention + persisted per-server prefix.
+    2. When guild has active Premium + No Prefix enabled and message passes safety guards,
+       includes '' so valid registered commands execute without a prefix.
+    """
     if message.guild is None:
         return commands.when_mentioned_or(bot.settings.default_prefix)(bot, message)
 
     prefix = await bot.get_server_prefix(message.guild.id)
-    return commands.when_mentioned_or(prefix)(bot, message)
+    prefixes = commands.when_mentioned_or(prefix)(bot, message)
+
+    if await bot.noprefix.should_trigger_no_prefix(message):
+        prefixes.append("")
+
+    return prefixes
 
 
 class JarvisBot(commands.AutoShardedBot):
-    """JARVIS AutoShardedBot orchestrating modular Cogs, async DB, caching, and presence."""
+    """JARVIS AutoShardedBot orchestrating modular Cogs, Premium, No-Prefix, async DB, and presence."""
 
     def __init__(self, settings: Settings) -> None:
         intents = discord.Intents.default()
@@ -64,6 +77,8 @@ class JarvisBot(commands.AutoShardedBot):
 
         self.settings: Settings = settings
         self.db: DatabaseManager = DatabaseManager(settings)
+        self.premium: PremiumService = PremiumService(self.db)
+        self.noprefix: NoPrefixService = NoPrefixService(self)
         self.prefix_cache: AsyncTTLCache[int, str] = AsyncTTLCache(ttl_seconds=300.0)
         self.started_at: datetime = datetime.now(timezone.utc)
         self._presence_templates = cycle(
@@ -83,17 +98,38 @@ class JarvisBot(commands.AutoShardedBot):
         await self.prefix_cache.set(guild_id, prefix)
         return prefix
 
+    async def make_embed(
+        self,
+        guild_id: int | None,
+        *,
+        title: str | None = None,
+        description: str | None = None,
+        color: int = JarvisColors.BRAND,
+        footer_note: str | None = None,
+    ) -> discord.Embed:
+        """Build a JARVIS embed automatically applying Premium server branding when active."""
+        if guild_id is None:
+            return jarvis_embed(title=title, description=description, color=color, footer_note=footer_note)
+        status = await self.premium.get_guild_status(guild_id)
+        if not status.is_premium:
+            return jarvis_embed(title=title, description=description, color=color, footer_note=footer_note)
+        branding = await self.db.get_guild_branding(guild_id)
+        return jarvis_embed(
+            title=title,
+            description=description,
+            color=color,
+            footer_note=footer_note,
+            branding=branding,
+            is_premium=True,
+        )
+
     async def setup_hook(self) -> None:
         """Initialize database, core events, all Cogs, persistent views, and presence loop."""
         self.logger.info("Initializing %s by %s...", BOT_NAME, DEVELOPER_NAME)
 
-        # 1. Verify & initialize database tables
         await self.db.init_models()
-
-        # 2. Load core lifecycle events
         await self.load_extension("core.events")
 
-        # 3. Discover and load all modular Cogs
         report = await load_all_extensions(self)
         self.logger.info(
             "Extensions loaded: %d | Failed: %d | Skipped: %d",
@@ -102,13 +138,9 @@ class JarvisBot(commands.AutoShardedBot):
             len(report.skipped),
         )
 
-        # 4. Register global slash command error handler
         self.tree.on_error = handle_app_command_error
-
-        # 5. Register persistent interactive Help view
         self.add_view(JarvisHelpView(self, prefix=self.settings.default_prefix, timeout=None))
 
-        # 6. Start background presence rotation
         if not self.rotate_presence.is_running():
             self.rotate_presence.start()
 
@@ -148,7 +180,6 @@ async def main() -> None:
             try:
                 loop.add_signal_handler(sig, lambda: asyncio.create_task(bot.close()))
             except NotImplementedError:
-                # Windows event loop does not support add_signal_handler
                 pass
 
     async with bot:

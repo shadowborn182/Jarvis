@@ -11,7 +11,7 @@ import shutil
 from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import AsyncIterator
+from typing import Any, AsyncIterator
 
 from sqlalchemy import event, select, text
 from sqlalchemy.ext.asyncio import (
@@ -22,7 +22,13 @@ from sqlalchemy.ext.asyncio import (
 )
 
 from config import DATABASE_DIR, Settings, get_settings
-from database.models import Base, GuildSettings, SecuritySettings
+from database.models import (
+    Base,
+    GuildBranding,
+    GuildSettings,
+    SecuritySettings,
+    WelcomeSettings,
+)
 
 logger = logging.getLogger("JARVIS.Database")
 
@@ -98,7 +104,7 @@ class DatabaseManager:
             return False
 
     async def ensure_guild(self, guild_id: int) -> GuildSettings:
-        """Fetch or atomically provision GuildSettings + default SecuritySettings."""
+        """Fetch or atomically provision GuildSettings, SecuritySettings, WelcomeSettings & GuildBranding."""
         async with self.session() as session:
             result = await session.execute(
                 select(GuildSettings).where(GuildSettings.guild_id == guild_id)
@@ -112,6 +118,24 @@ class DatabaseManager:
                 session.add(guild)
                 await session.flush()
                 session.add(SecuritySettings(guild_id=guild_id))
+                session.add(WelcomeSettings(guild_id=guild_id))
+                session.add(GuildBranding(guild_id=guild_id))
+            else:
+                sec = await session.execute(
+                    select(SecuritySettings).where(SecuritySettings.guild_id == guild_id)
+                )
+                if sec.scalar_one_or_none() is None:
+                    session.add(SecuritySettings(guild_id=guild_id))
+                wel = await session.execute(
+                    select(WelcomeSettings).where(WelcomeSettings.guild_id == guild_id)
+                )
+                if wel.scalar_one_or_none() is None:
+                    session.add(WelcomeSettings(guild_id=guild_id))
+                brd = await session.execute(
+                    select(GuildBranding).where(GuildBranding.guild_id == guild_id)
+                )
+                if brd.scalar_one_or_none() is None:
+                    session.add(GuildBranding(guild_id=guild_id))
             return guild
 
     async def get_guild_prefix(self, guild_id: int) -> str:
@@ -133,9 +157,120 @@ class DatabaseManager:
             if guild is None:
                 guild = GuildSettings(guild_id=guild_id, prefix=new_prefix)
                 session.add(guild)
+                await session.flush()
+                session.add(GuildBranding(guild_id=guild_id))
             else:
                 guild.prefix = new_prefix
             return new_prefix
+
+    async def get_guild_branding(self, guild_id: int) -> GuildBranding:
+        """Fetch or provision GuildBranding for a specific guild."""
+        await self.ensure_guild(guild_id)
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(GuildBranding).where(GuildBranding.guild_id == guild_id)
+            )
+            branding = result.scalar_one_or_none()
+            if branding is None:
+                branding = GuildBranding(guild_id=guild_id)
+            return branding
+
+    async def update_guild_branding(self, guild_id: int, **fields: Any) -> GuildBranding:
+        """Update whitelisted fields on GuildBranding for a specific guild."""
+        await self.ensure_guild(guild_id)
+        allowed_fields = {
+            "no_prefix_enabled",
+            "embed_color",
+            "embed_title_style",
+            "embed_footer",
+            "footer_icon_url",
+            "server_logo_url",
+            "branding_text",
+            "welcome_banner_enabled",
+            "welcome_banner_bg_url",
+            "welcome_banner_text",
+            "welcome_banner_text_color",
+            "welcome_banner_accent_color",
+            "welcome_banner_text_position",
+            "goodbye_banner_enabled",
+            "goodbye_banner_bg_url",
+            "goodbye_banner_text",
+            "goodbye_banner_text_color",
+            "goodbye_banner_accent_color",
+            "goodbye_banner_text_position",
+        }
+        async with self.session() as session:
+            result = await session.execute(
+                select(GuildBranding).where(GuildBranding.guild_id == guild_id)
+            )
+            branding = result.scalar_one()
+            for key, value in fields.items():
+                if key in allowed_fields:
+                    setattr(branding, key, value)
+            await session.flush()
+            return branding
+
+    async def reset_guild_branding(self, guild_id: int) -> GuildBranding:
+        """Reset per-guild branding customization back to JARVIS defaults."""
+        return await self.update_guild_branding(
+            guild_id,
+            no_prefix_enabled=False,
+            embed_color="#38BDF8",
+            embed_title_style="default",
+            embed_footer=None,
+            footer_icon_url=None,
+            server_logo_url=None,
+            branding_text=None,
+            welcome_banner_enabled=True,
+            welcome_banner_bg_url=None,
+            welcome_banner_text=None,
+            welcome_banner_text_color="#F8FAFC",
+            welcome_banner_accent_color="#38BDF8",
+            welcome_banner_text_position="center",
+            goodbye_banner_enabled=True,
+            goodbye_banner_bg_url=None,
+            goodbye_banner_text=None,
+            goodbye_banner_text_color="#F8FAFC",
+            goodbye_banner_accent_color="#F59E0B",
+            goodbye_banner_text_position="center",
+        )
+
+    async def get_welcome_settings(self, guild_id: int) -> WelcomeSettings:
+        """Fetch or provision WelcomeSettings for a guild."""
+        await self.ensure_guild(guild_id)
+        async with self.session_factory() as session:
+            result = await session.execute(
+                select(WelcomeSettings).where(WelcomeSettings.guild_id == guild_id)
+            )
+            return result.scalar_one()
+
+    async def update_welcome_settings(self, guild_id: int, **fields: Any) -> WelcomeSettings:
+        """Update whitelisted fields on WelcomeSettings for a guild."""
+        await self.ensure_guild(guild_id)
+        allowed = {
+            "welcome_enabled",
+            "welcome_channel_id",
+            "welcome_message",
+            "welcome_image_enabled",
+            "welcome_bg_url",
+            "welcome_dm_enabled",
+            "welcome_dm_message",
+            "goodbye_enabled",
+            "goodbye_channel_id",
+            "goodbye_message",
+            "boost_channel_id",
+            "boost_message",
+        }
+        async with self.session() as session:
+            result = await session.execute(
+                select(WelcomeSettings).where(WelcomeSettings.guild_id == guild_id)
+            )
+            settings_row = result.scalar_one()
+            for key, value in fields.items():
+                if key in allowed:
+                    setattr(settings_row, key, value)
+            await session.flush()
+            return settings_row
 
     def backup_sqlite(self) -> Path | None:
         """Create a timestamped local SQLite backup if running on SQLite."""

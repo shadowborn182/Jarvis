@@ -1,5 +1,5 @@
 """
-JARVIS — Global Error Handler (Prefix + Slash + Database + API Timeouts)
+JARVIS — Global Error Handler (Prefix + Slash + Premium + Database + API Timeouts)
 Developer: Shadow
 """
 
@@ -15,8 +15,8 @@ from discord import app_commands
 from discord.ext import commands
 from sqlalchemy.exc import SQLAlchemyError
 
-from core.branding import error_embed, warning_embed
-from core.checks import BotOwnerOnly, GuildOwnerOnly, ModRoleRequired
+from core.branding import error_embed, premium_embed, warning_embed
+from core.checks import BotOwnerOnly, GuildOwnerOnly, ModRoleRequired, PremiumRequired
 
 logger = logging.getLogger("JARVIS.Errors")
 
@@ -26,8 +26,7 @@ def _format_missing_perms(perms: list[str]) -> str:
 
 
 async def handle_prefix_command_error(ctx: commands.Context, error: commands.CommandError) -> None:
-    """Centralized error handler for all prefix commands."""
-    # Unwrap CommandInvokeError
+    """Centralized error handler for all prefix & no-prefix commands."""
     original: Any = getattr(error, "original", error)
 
     if isinstance(error, commands.CommandNotFound):
@@ -43,6 +42,13 @@ async def handle_prefix_command_error(ctx: commands.Context, error: commands.Com
     if isinstance(error, commands.NoPrivateMessage):
         await ctx.reply(
             embed=warning_embed("Server Only", "This command can only be used inside a Discord server."),
+            mention_author=False,
+        )
+        return
+
+    if isinstance(error, PremiumRequired):
+        await ctx.reply(
+            embed=premium_embed("JARVIS Premium Required", str(error)),
             mention_author=False,
         )
         return
@@ -85,6 +91,9 @@ async def handle_prefix_command_error(ctx: commands.Context, error: commands.Com
         return
 
     if isinstance(error, (commands.MissingRequiredArgument, commands.BadArgument, commands.BadUnionArgument)):
+        # If invoked via No Prefix and arguments failed, avoid noisy error spam on casual chat
+        if ctx.prefix == "":
+            return
         prefix = ctx.clean_prefix
         usage = f"`{prefix}{ctx.command.qualified_name} {ctx.command.signature}`".strip()
         await ctx.reply(
@@ -122,7 +131,6 @@ async def handle_prefix_command_error(ctx: commands.Context, error: commands.Com
         )
         return
 
-    # Unexpected internal error
     tb = "".join(traceback.format_exception(type(original), original, original.__traceback__))
     logger.error("Unhandled prefix command error (%s):\n%s", ctx.command, tb)
     await ctx.reply(

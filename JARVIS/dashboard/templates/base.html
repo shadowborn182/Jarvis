@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>{{ bot_name }} — Dashboard</title>
+  <link rel="stylesheet" href="/static/dashboard.css" />
+</head>
+<body>
+  <header class="topbar">
+    <a href="/servers" class="brand">{{ bot_name }}</a>
+    <div class="topbar-actions">
+      {% if user %}
+        <span class="user-label">{{ user.username }}</span>
+        <form action="/auth/logout" method="post" class="inline-form">
+          <button type="submit" class="btn btn-secondary">Logout</button>
+        </form>
+      {% endif %}
+    </div>
+  </header>
+
+  <main class="container">
+    {% block content %}{% endblock %}
+  </main>
+
+  <footer class="footer">
+    <span>{{ bot_name }} • {{ bot_description }} • Developed by {{ developer_name }}</span>
+  </footer>
+</body>
+</html>
