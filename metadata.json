@@ -1,0 +1,6 @@
+{
+  "name": "JARVIS — Discord Bot Workspace",
+  "description": "Advanced All-In-One Python Discord Management Bot & FastAPI Dashboard Architecture by Shadow.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
